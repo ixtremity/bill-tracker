@@ -148,8 +148,13 @@ export default function DashboardPage() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Upcoming Bills</CardTitle>
+            {data.upcomingBills.length > 0 && (
+              <span className="text-sm font-semibold">
+                Total: {formatCurrency(data.upcomingBills.reduce((sum, b) => sum + b.amount, 0))}
+              </span>
+            )}
           </CardHeader>
           <CardContent>
             {data.upcomingBills.length === 0 ? (
