@@ -17,10 +17,9 @@ import {
   Clock,
   AlertTriangle,
   CheckCircle,
-  CreditCard,
   RefreshCw,
 } from "lucide-react";
-import { DashboardData, formatCurrency, formatDate, daysUntil, PAYMENT_STATUS_CONFIG, PaymentStatus } from "@/lib/types";
+import { DashboardData, formatCurrency, formatDate, daysUntil } from "@/lib/types";
 import { SpendChart } from "@/components/spend-chart";
 import { toast } from "sonner";
 
@@ -80,13 +79,13 @@ export default function DashboardPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              This Month
+              Total Bills
             </CardTitle>
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {formatCurrency(data.totalMonthly)}
+              {formatCurrency(data.totalAll)}
             </div>
             <p className="text-xs text-muted-foreground">
               {data.subscriptionCount} active subscriptions
@@ -103,7 +102,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">
-              {formatCurrency(data.paidThisMonth)}
+              {formatCurrency(data.totalPaid)}
             </div>
           </CardContent>
         </Card>
@@ -117,8 +116,13 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-yellow-600">
-              {formatCurrency(data.pendingThisMonth)}
+              {formatCurrency(data.totalPending)}
             </div>
+            {data.upcomingCount > 0 && (
+              <p className="text-xs text-muted-foreground">
+                {data.upcomingCount} upcoming bill{data.upcomingCount > 1 ? "s" : ""}
+              </p>
+            )}
           </CardContent>
         </Card>
 
@@ -131,7 +135,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-red-600">
-              {formatCurrency(data.overdueThisMonth)}
+              {formatCurrency(data.totalOverdue)}
             </div>
             {data.overdueCount > 0 && (
               <p className="text-xs text-red-500">
@@ -145,7 +149,7 @@ export default function DashboardPage() {
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Upcoming Bills (Next 7 Days)</CardTitle>
+            <CardTitle>Upcoming Bills</CardTitle>
           </CardHeader>
           <CardContent>
             {data.upcomingBills.length === 0 ? (
@@ -173,21 +177,26 @@ export default function DashboardPage() {
                         </TableCell>
                         <TableCell>{formatCurrency(bill.amount)}</TableCell>
                         <TableCell>
-                          <span
-                            className={
-                              days <= 1
-                                ? "font-semibold text-red-600"
-                                : days <= 3
-                                ? "text-yellow-600"
-                                : ""
-                            }
-                          >
-                            {days === 0
-                              ? "Today"
-                              : days === 1
-                              ? "Tomorrow"
-                              : `${days} days`}
-                          </span>
+                          <div className="flex flex-col">
+                            <span className="text-sm">{formatDate(bill.dueDate)}</span>
+                            <span
+                              className={`text-xs ${
+                                days <= 1
+                                  ? "font-semibold text-red-600"
+                                  : days <= 3
+                                  ? "text-yellow-600"
+                                  : days <= 7
+                                  ? "text-orange-500"
+                                  : "text-muted-foreground"
+                              }`}
+                            >
+                              {days === 0
+                                ? "Today"
+                                : days === 1
+                                ? "Tomorrow"
+                                : `${days} days left`}
+                            </span>
+                          </div>
                         </TableCell>
                       </TableRow>
                     );

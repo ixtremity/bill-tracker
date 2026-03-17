@@ -12,11 +12,6 @@ function startOfDay(date: Date): Date {
 export async function GET() {
   const now = new Date();
   const today = startOfDay(now);
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-  const sevenDaysFromNow = new Date(today);
-  sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
-  sevenDaysFromNow.setHours(23, 59, 59, 999);
 
   // All bills with joins
   const allBills = await db
@@ -43,39 +38,33 @@ export async function GET() {
     .leftJoin(paymentCards, eq(bills.cardId, paymentCards.id))
     .orderBy(bills.dueDate);
 
-  // This month's bills
-  const monthBills = allBills.filter((b) => {
-    if (!b.dueDate) return false;
-    const d = new Date(b.dueDate).getTime();
-    return d >= startOfMonth.getTime() && d <= endOfMonth.getTime();
-  });
+  // All unpaid bills (pending or overdue)
+  const unpaidBills = allBills.filter((b) => b.paymentStatus !== "paid");
 
-  const paidThisMonth = monthBills
+  // Total pending amount (all unpaid bills regardless of month)
+  const totalPending = unpaidBills.reduce((sum, b) => sum + (b.amount || 0), 0);
+
+  // Paid total (all time)
+  const totalPaid = allBills
     .filter((b) => b.paymentStatus === "paid")
     .reduce((sum, b) => sum + (b.amount || 0), 0);
-  const pendingThisMonth = monthBills
-    .filter((b) => b.paymentStatus === "pending")
-    .reduce((sum, b) => sum + (b.amount || 0), 0);
-  const overdueThisMonth = monthBills
-    .filter((b) => b.paymentStatus === "overdue" || (b.paymentStatus === "pending" && new Date(b.dueDate).getTime() < today.getTime()))
-    .reduce((sum, b) => sum + (b.amount || 0), 0);
 
-  // Upcoming (next 7 days, unpaid)
-  const upcomingBills = allBills.filter((b) => {
-    if (!b.dueDate) return false;
-    const d = new Date(b.dueDate).getTime();
-    return d >= today.getTime() && d <= sevenDaysFromNow.getTime() && b.paymentStatus !== "paid";
-  });
-
-  // Overdue
+  // Overdue (past due and not paid)
   const overdueBills = allBills.filter((b) => {
     if (!b.dueDate) return false;
     return b.paymentStatus === "overdue" || (b.paymentStatus === "pending" && new Date(b.dueDate).getTime() < today.getTime());
   });
+  const totalOverdue = overdueBills.reduce((sum, b) => sum + (b.amount || 0), 0);
 
-  // Monthly trend (last 6 months)
+  // Upcoming: all unpaid bills due today or later, sorted by due date
+  const upcomingBills = allBills.filter((b) => {
+    if (!b.dueDate) return false;
+    return new Date(b.dueDate).getTime() >= today.getTime() && b.paymentStatus !== "paid";
+  });
+
+  // Monthly trend (last 6 months + current month)
   const monthlyTrend = [];
-  for (let i = 5; i >= 0; i--) {
+  for (let i = 5; i >= -1; i--) {
     const mStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
     const mEnd = new Date(mStart.getFullYear(), mStart.getMonth() + 1, 0, 23, 59, 59, 999);
     const monthName = mStart.toLocaleDateString("en-US", { month: "short", year: "2-digit" });
@@ -95,15 +84,16 @@ export async function GET() {
   // Subscription count
   const allSubscriptions = await db.select().from(subscriptions).where(eq(subscriptions.isActive, true));
 
-  const totalMonthly = monthBills.reduce((sum, b) => sum + (b.amount || 0), 0);
+  // Total of all bills
+  const totalAll = allBills.reduce((sum, b) => sum + (b.amount || 0), 0);
 
   return NextResponse.json({
-    totalMonthly,
+    totalAll,
+    totalPending,
+    totalPaid,
+    totalOverdue,
     upcomingCount: upcomingBills.length,
     overdueCount: overdueBills.length,
-    paidThisMonth,
-    pendingThisMonth,
-    overdueThisMonth,
     upcomingBills: upcomingBills.slice(0, 10),
     recentBills: allBills.slice(0, 20),
     entities: allEntities,

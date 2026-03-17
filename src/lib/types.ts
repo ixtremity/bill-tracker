@@ -78,12 +78,12 @@ export const CATEGORY_CONFIG: Record<string, { label: string; color: string }> =
 };
 
 export interface DashboardData {
-  totalMonthly: number;
+  totalAll: number;
+  totalPending: number;
+  totalPaid: number;
+  totalOverdue: number;
   upcomingCount: number;
   overdueCount: number;
-  paidThisMonth: number;
-  pendingThisMonth: number;
-  overdueThisMonth: number;
   upcomingBills: Bill[];
   recentBills: Bill[];
   entities: Entity[];
