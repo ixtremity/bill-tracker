@@ -1,14 +1,22 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { bills, subscriptions, entities, paymentCards } from "@/lib/db/schema";
-import { eq, and, gte, lte, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
+
+function startOfDay(date: Date): Date {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
 
 export async function GET() {
   const now = new Date();
+  const today = startOfDay(now);
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
-  const sevenDaysFromNow = new Date();
+  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+  const sevenDaysFromNow = new Date(today);
   sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
+  sevenDaysFromNow.setHours(23, 59, 59, 999);
 
   // All bills with joins
   const allBills = await db
@@ -37,43 +45,47 @@ export async function GET() {
 
   // This month's bills
   const monthBills = allBills.filter((b) => {
-    const d = new Date(b.dueDate);
-    return d >= startOfMonth && d <= endOfMonth;
+    if (!b.dueDate) return false;
+    const d = new Date(b.dueDate).getTime();
+    return d >= startOfMonth.getTime() && d <= endOfMonth.getTime();
   });
 
   const paidThisMonth = monthBills
     .filter((b) => b.paymentStatus === "paid")
-    .reduce((sum, b) => sum + b.amount, 0);
+    .reduce((sum, b) => sum + (b.amount || 0), 0);
   const pendingThisMonth = monthBills
     .filter((b) => b.paymentStatus === "pending")
-    .reduce((sum, b) => sum + b.amount, 0);
+    .reduce((sum, b) => sum + (b.amount || 0), 0);
   const overdueThisMonth = monthBills
-    .filter((b) => b.paymentStatus === "overdue")
-    .reduce((sum, b) => sum + b.amount, 0);
+    .filter((b) => b.paymentStatus === "overdue" || (b.paymentStatus === "pending" && new Date(b.dueDate).getTime() < today.getTime()))
+    .reduce((sum, b) => sum + (b.amount || 0), 0);
 
   // Upcoming (next 7 days, unpaid)
   const upcomingBills = allBills.filter((b) => {
-    const d = new Date(b.dueDate);
-    return d >= now && d <= sevenDaysFromNow && b.paymentStatus !== "paid";
+    if (!b.dueDate) return false;
+    const d = new Date(b.dueDate).getTime();
+    return d >= today.getTime() && d <= sevenDaysFromNow.getTime() && b.paymentStatus !== "paid";
   });
 
   // Overdue
-  const overdueBills = allBills.filter(
-    (b) => b.paymentStatus === "overdue" || (b.paymentStatus === "pending" && new Date(b.dueDate) < now)
-  );
+  const overdueBills = allBills.filter((b) => {
+    if (!b.dueDate) return false;
+    return b.paymentStatus === "overdue" || (b.paymentStatus === "pending" && new Date(b.dueDate).getTime() < today.getTime());
+  });
 
   // Monthly trend (last 6 months)
   const monthlyTrend = [];
   for (let i = 5; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59);
-    const monthName = d.toLocaleDateString("en-US", { month: "short", year: "2-digit" });
+    const mStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const mEnd = new Date(mStart.getFullYear(), mStart.getMonth() + 1, 0, 23, 59, 59, 999);
+    const monthName = mStart.toLocaleDateString("en-US", { month: "short", year: "2-digit" });
     const total = allBills
       .filter((b) => {
-        const bd = new Date(b.dueDate);
-        return bd >= d && bd <= monthEnd;
+        if (!b.dueDate) return false;
+        const bd = new Date(b.dueDate).getTime();
+        return bd >= mStart.getTime() && bd <= mEnd.getTime();
       })
-      .reduce((sum, b) => sum + b.amount, 0);
+      .reduce((sum, b) => sum + (b.amount || 0), 0);
     monthlyTrend.push({ month: monthName, amount: total });
   }
 
@@ -83,7 +95,7 @@ export async function GET() {
   // Subscription count
   const allSubscriptions = await db.select().from(subscriptions).where(eq(subscriptions.isActive, true));
 
-  const totalMonthly = monthBills.reduce((sum, b) => sum + b.amount, 0);
+  const totalMonthly = monthBills.reduce((sum, b) => sum + (b.amount || 0), 0);
 
   return NextResponse.json({
     totalMonthly,
